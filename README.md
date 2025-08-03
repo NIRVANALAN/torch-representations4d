@@ -56,7 +56,7 @@ class EncoderToReadout(nn.Module):
 
 4. [Optional] Set up the environment. We provide Pipfile.
 
-Since not all sampling models are implemented equally in Jax and Torch, the patch above enables us to specify which sampling mode to use in the original Jax model readout.
+Because sampling models are implemented differently in JAX and PyTorch, the patch above allows us to explicitly select the sampling mode used in the original JAX model's readout, which helps ensure consistency during unit testing.
 
 ## Convert to PyTorch
 
