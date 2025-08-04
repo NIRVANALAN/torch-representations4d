@@ -222,7 +222,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def convert(jax_ckpt):
+def convert_with_readout(jax_ckpt):
   readout_ckpt = {
       k.replace("params/layers_2/", ""): v
       for (k, v) in jax_ckpt.items()
@@ -268,21 +268,59 @@ def convert(jax_ckpt):
       "readout_state_dict": readout_state_dict
   }
 
+
+def convert_without_readout(jax_ckpt):
+  patch_embedding_ckpt = {
+      k.replace("params/encoder/patch_embedding/", "patch_embedding/"): torch.from_numpy(v)
+      for (k, v) in jax_ckpt.items() if "Conv_0" in k
+  }
+  embed_ckpt = {
+      "posenc": torch.from_numpy(jax_ckpt["params/encoder/posenc/embeddings"])
+  }
+  tokenizer_ckpt = {**patch_embedding_ckpt, **embed_ckpt}
+  processor_ckpt = {
+      (
+          k
+          .replace("params/processor/", "")
+      ): torch.from_numpy(v)
+      for (k, v) in jax_ckpt.items()
+      if "params/processor/layers_" in k and "encoder" not in k
+  }
+  tokenizer_state_dict = convert_tokenizer(tokenizer_ckpt)
+  processor_state_dict = convert_transformer(processor_ckpt)
+  encoder_state_dict = {
+      **{
+          f"tokenizer.{k}": v
+          for (k, v) in tokenizer_state_dict.items()
+      },
+      **{
+          f"processor.{k}": v
+          for (k, v) in processor_state_dict.items()
+      }
+  }
+  return {
+      "encoder_state_dict": encoder_state_dict,
+  }
+
+
 def main(ckpt_path: str, out_dir: str):
   ckpt = np.load(ckpt_path)
   
   out_folder = Path(out_dir)
   out_folder.mkdir(exist_ok=True, parents=True)
-
-  torch_ckpt = convert(ckpt)
+  if "depth" in ckpt_path:
+    torch_ckpt = convert_with_readout(ckpt)
+  else:
+    torch_ckpt = convert_without_readout(ckpt)
   torch.save(
       torch_ckpt["encoder_state_dict"],
       str(out_folder / "encoder.pth")
   )
-  torch.save(
-      torch_ckpt["readout_state_dict"],
-      str(out_folder / "readout.pth")
-  )
+  if "readout_state_dict" in torch_ckpt:
+    torch.save(
+        torch_ckpt["readout_state_dict"],
+        str(out_folder / "readout.pth")
+    )
 
 if __name__ == "__main__":
     args = parse_args()

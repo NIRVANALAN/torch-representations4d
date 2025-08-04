@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 
@@ -14,6 +14,7 @@ class Encoder(nn.Module):
         num_heads: int,
         num_layers: int,
         hidden_size: int,
+        mlp_size: Optional[int] = None,
         n_iter: int = 1
     ):
         super(Encoder, self).__init__()
@@ -26,6 +27,7 @@ class Encoder(nn.Module):
             num_heads=num_heads,
             num_layers=num_layers,
             hidden_size=hidden_size,
+            mlp_size=mlp_size,
             n_iter=n_iter
         )
 

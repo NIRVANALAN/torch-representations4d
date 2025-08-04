@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 import torch
 import torch.nn as nn
 
@@ -21,6 +21,7 @@ class GeneralizedTransformer(nn.Module):
         num_heads: int,
         num_layers: int,
         hidden_size: int,
+        mlp_size: Optional[int] = None,
         n_iter: int = 1,
     ):
         super().__init__()
@@ -28,6 +29,7 @@ class GeneralizedTransformer(nn.Module):
             PreNormBlock(
                 num_heads=num_heads,
                 hidden_size=hidden_size,
+                mlp_size=mlp_size
             )
             for _ in range(num_layers)
         ])

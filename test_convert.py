@@ -5,7 +5,10 @@ import numpy as np
 
 import os
 
-from convert import convert
+from convert import (
+   convert_with_readout,
+   convert_without_readout
+)
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 
 import jax
@@ -19,7 +22,9 @@ import numpy as np
 from representations4d.utils import checkpoint_utils
 from einops import rearrange
 
-JAX_CHECKPOINT_PATH = "representations4d/scaling4d_dist_b_depth.npz"
+JAX_DEPTH_CHECKPOINT_PATH = "representations4d/scaling4d_dist_b_depth.npz"
+JAX_CHECKPOINT_PATH = "representations4d/scaling4d_dist_b.npz"
+
 TEST_VIDEO_PATH = "representations4d/horsejump-high.mp4"
 
 model_patch_size = (2, 16, 16)
@@ -41,6 +46,38 @@ embedding_shape = (
   im_size[1] // model_patch_size[2],
 )
 num_tokens = embedding_shape[0] * embedding_shape[1] * embedding_shape[2]
+
+def get_jax_encoder_model():
+  return model_lib.Model(
+      encoder=model_lib.Tokenizer(
+          patch_embedding=model_lib.PatchEmbedding(
+              patch_size=model_patch_size,
+              num_features=kd_vit.VIT_SIZES[model_size][0],
+          ),
+          posenc=pos_embeddings.LearnedEmbedding(dtype=dtype),
+          posenc_axes=(-4, -3, -2),
+      ),
+      processor=model_lib.GeneralizedTransformer.from_variant_str(
+          variant_str=model_size,
+          dtype=dtype,
+      ),
+  )
+
+def get_torch_encoder_model(ckpt):
+  from encoder import Encoder
+
+  encoder_state_dict = ckpt["encoder_state_dict"]
+  torch_encoder = Encoder(
+      input_size=(3, 16, 224, 224),
+      patch_size=(2, 16, 16),
+      num_heads=12,
+      num_layers=12,
+      hidden_size=768,
+      n_iter=1
+  )
+  torch_encoder.load_state_dict(encoder_state_dict)   
+
+  return torch_encoder
 
 def get_jax_depth_model():
   from flax import linen as nn
@@ -131,10 +168,10 @@ def get_torch_depth_model(ckpt):
   return torch_depth_model
 
 class TestConvert(unittest.TestCase):
-    def test_convert_full_depth(self):
+    def test_convert_base_depth(self):
       # Load ckpts
-      jax_ckpt = np.load(JAX_CHECKPOINT_PATH)
-      torch_ckpt = convert(jax_ckpt)
+      jax_ckpt = np.load(JAX_DEPTH_CHECKPOINT_PATH)
+      torch_ckpt = convert_with_readout(jax_ckpt)
       # Load models 
       jax_depth_model = get_jax_depth_model()
       torch_depth_model = get_torch_depth_model(torch_ckpt)
@@ -145,7 +182,7 @@ class TestConvert(unittest.TestCase):
       key = jax.random.key(0)
       _ = jax_depth_model.init(key, video, is_training_property=False)
       jax_restored_params = checkpoint_utils.recover_tree(
-          checkpoint_utils.npload(JAX_CHECKPOINT_PATH)
+          checkpoint_utils.npload(JAX_DEPTH_CHECKPOINT_PATH)
       )
       output_jax = (
           jax_depth_model.apply(
@@ -165,6 +202,44 @@ class TestConvert(unittest.TestCase):
           atol=1e-5,
           rtol=1e-5
       )
+
+    def test_convert_base_encoder(self):
+      # Load ckpts
+      jax_ckpt = np.load(JAX_CHECKPOINT_PATH)
+      torch_ckpt = convert_without_readout(jax_ckpt)
+      # Load models 
+      jax_encoder_model = get_jax_encoder_model()
+      torch_depth_model = get_torch_encoder_model(torch_ckpt)
+      # Load input
+      video = mediapy.read_video(TEST_VIDEO_PATH)
+      video = mediapy.resize_video(video, im_size) / 255.0
+      video = video[jnp.newaxis, :num_input_frames].astype(jnp.float32)
+      key = jax.random.key(0)
+      _ = jax_encoder_model.init(key, video, is_training_property=False)
+      jax_restored_params = checkpoint_utils.recover_tree(
+          checkpoint_utils.npload(JAX_CHECKPOINT_PATH)
+      )
+      output_jax = (
+          jax_encoder_model.apply(
+              jax_restored_params,
+              video,
+              is_training_property=False
+          )
+      )
+      video_torch = rearrange(
+          torch.from_numpy(jax.device_get(video).copy()),
+          "b t h w c -> b c t h w"
+      )
+      output_torch = torch_depth_model(video_torch)
+
+      assert len(output_jax) == len(output_torch)
+      for (out_jax, out_torch) in zip(output_jax, output_torch):
+          assert torch.allclose(
+              out_torch,
+              torch.from_numpy(jax.device_get(out_jax).copy()),
+              atol=1e-3,
+              rtol=1e-3
+          )
 
 if __name__ == '__main__':
     unittest.main()

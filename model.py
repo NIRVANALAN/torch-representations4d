@@ -12,6 +12,7 @@ class PreNormBlock(nn.Module):
         self,
         num_heads: int,
         hidden_size: int,
+        mlp_size: Optional[int] = None,
         normalize_qk: bool = False,
         use_bias: bool = True,
         dropout_p: float = 0.0
@@ -32,7 +33,9 @@ class PreNormBlock(nn.Module):
         self.mlp_norm = LayerNorm(hidden_size, eps=0.000001)
         self.mlp = TransformerMLP(
             input_dim=hidden_size,
-            hidden_size=4*hidden_size
+            hidden_size=(
+                mlp_size if mlp_size is not None else 4*hidden_size
+            )
         )
 
     def forward(self, tokens: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
