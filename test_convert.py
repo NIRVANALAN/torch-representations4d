@@ -21,6 +21,55 @@ from representations4d.models import readout
 import numpy as np
 from representations4d.utils import checkpoint_utils
 from einops import rearrange
+from flax import linen as nn
+import jax
+import jax.numpy as jnp
+from kauldron import typing as kd_typing
+
+
+typechecked = kd_typing.typechecked
+Float = kd_typing.Float
+Shape = kd_typing.Shape
+Dim = kd_typing.Dim
+Initializer = kd_typing.Initializer
+check_type = kd_typing.check_type
+
+class EncoderToReadout(nn.Module):
+  """Encoder to readout."""
+
+  embedding_shape: tuple[int, int, int]
+  readout_depth: float
+  num_input_frames: int
+  mode: str = "cubic"
+
+  @nn.compact
+  @typechecked
+  def __call__(self, all_features: list[Float['...']]) -> Float['...']:
+    readout_id = int(len(all_features) * self.readout_depth) - 1
+    features = all_features[readout_id]
+    readout_features = jnp.reshape(
+        features,
+        (features.shape[0],)  # batch
+        + (self.embedding_shape[0],)  # time
+        + (self.embedding_shape[1] * self.embedding_shape[2],)  # space
+        + features.shape[-1:],  # channels
+    )
+    out_shape = (
+        (readout_features.shape[0],)
+        + (self.num_input_frames,)
+        + (
+            self.embedding_shape[0]
+            * self.embedding_shape[1]
+            * self.embedding_shape[2]
+            // self.embedding_shape[0],
+        )
+        + (readout_features.shape[3],)
+    )
+    readout_features = jax.image.resize(
+        readout_features, out_shape, self.mode
+    )
+    return readout_features
+
 
 JAX_DEPTH_CHECKPOINT_PATH = "representations4d/scaling4d_dist_b_depth.npz"
 JAX_CHECKPOINT_PATH = "representations4d/scaling4d_dist_b.npz"
@@ -96,7 +145,7 @@ def get_jax_depth_model():
           dtype=dtype,
       ),
   )
-  encoder2readout = model_lib.EncoderToReadout(
+  encoder2readout = EncoderToReadout(
       embedding_shape=(
           num_input_frames // model_patch_size[0],
           im_size[0] // model_patch_size[1],
