@@ -22,8 +22,11 @@ import numpy as np
 from representations4d.utils import checkpoint_utils
 from einops import rearrange
 
-JAX_DEPTH_CHECKPOINT_PATH = "representations4d/scaling4d_dist_b_depth.npz"
-JAX_CHECKPOINT_PATH = "representations4d/scaling4d_dist_b.npz"
+# JAX_DEPTH_CHECKPOINT_PATH = "representations4d/scaling4d_dist_b_depth.npz"
+# JAX_CHECKPOINT_PATH = "representations4d/scaling4d_dist_b.npz"
+
+JAX_DEPTH_CHECKPOINT_PATH = "checkpoints/scaling4d_dist_b_depth.npz"
+JAX_CHECKPOINT_PATH = "checkpoints/scaling4d_dist_b.npz"
 
 TEST_VIDEO_PATH = "representations4d/horsejump-high.mp4"
 
