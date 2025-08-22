@@ -58,13 +58,16 @@ class Encoder(nn.Module):
         # unshuffle to get the binary mask
         mask = torch.gather(mask, dim=1, index=ids_restore)
 
-        return x_masked, mask, ids_restore
+        return x_masked, mask, ids_restore, ids_keep
 
-    def forward(self, video: torch.Tensor, mask_ratio: float = 0) -> torch.Tensor:
+    def forward(self, video: torch.Tensor, mask_ratio: float = 0, return_mask: bool = False) -> torch.Tensor:
         x = self.tokenizer(video)
         if mask_ratio > 0:
             # masking: length -> length * (1-mask_ratio)
-            x, mask, ids_restore = self.random_masking(x, mask_ratio)
+            x, mask, ids_restore, ids_keep = self.random_masking(x, mask_ratio)
         # st()
         x = self.processor(x)
-        return x
+        if return_mask:
+            return x, (mask, ids_keep, ids_restore)
+        else:
+                return x

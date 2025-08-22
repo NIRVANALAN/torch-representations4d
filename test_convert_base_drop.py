@@ -242,13 +242,40 @@ class TestConvert(unittest.TestCase):
       )
       mask_ratio = 0.95 # as in Rep4D paper
 
-      output_torch_1 = torch_depth_model(video_torch, mask_ratio=mask_ratio)
-      output_torch_2 = torch_depth_model(video_torch, mask_ratio=mask_ratio)
+    #   output_torch_1, mask_torch_1 = torch_depth_model(video_torch, mask_ratio=mask_ratio, return_mask=True)
+    #   output_torch_2, mask_torch_2 = torch_depth_model(video_torch, mask_ratio=mask_ratio, return_mask=True)
 
-      for layer_idx, (out_torch_1, out_torch_2) in enumerate(zip(output_torch_1, output_torch_2)):
-            print(f"layer {layer_idx} does not match, error: {torch.abs(out_torch_1 - out_torch_2).max()}")
+    #   for layer_idx, (out_torch_1, out_torch_2) in enumerate(zip(output_torch_1, output_torch_2)):
+    #         print(f"layer {layer_idx} does not match, error: {torch.abs(out_torch_1 - out_torch_2).max()}")
 
-    #   st()  
+      output_torch, (mask, ids_keep, ids_restore) = torch_depth_model(video_torch, mask_ratio=mask_ratio, return_mask=True)
+      ids_keep_jax = jnp.array(ids_keep.detach().cpu().numpy())
+      ids_keep_jax = ids_keep_jax.astype(jnp.int32)
+
+      # ! jax version forward
+
+      key = jax.random.key(0)
+      jax_encoder_model = get_jax_encoder_model()
+      _ = jax_encoder_model.init(key, video, ids_keep=ids_keep_jax, is_training_property=False)
+      jax_restored_params = checkpoint_utils.recover_tree(
+          checkpoint_utils.npload(JAX_CHECKPOINT_PATH)
+      )
+
+      output_jax = (
+          jax_encoder_model.apply(
+              jax_restored_params,
+              video,
+              ids_keep=ids_keep_jax,
+              is_training_property=False
+          )
+      )
+
+      assert len(output_jax) == len(output_torch)
+      for layer_idx, (out_jax, out_torch) in enumerate(zip(output_jax, output_torch)):
+        print(f"layer {layer_idx} match error: {torch.abs(out_torch - torch.from_numpy(jax.device_get(out_jax).copy())).max()}")
+        # assert torch.allclose( out_torch, torch.from_numpy(jax.device_get(out_jax).copy()), 
+        # atol=1e-4, rtol=1e-4), \
+        # f"layer {layer_idx} does not match, error: {torch.abs(out_torch - torch.from_numpy(jax.device_get(out_jax).copy())).max()}"
 
 
 

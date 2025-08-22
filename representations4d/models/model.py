@@ -144,10 +144,29 @@ class Model(nn.Module, kw_only=True):
   def __call__(
       self,
       video: Float['*B T H W C'],
+      ids_keep=None,
   ) -> list[Float['...']]:
     tokens = self.encoder(video)
 
     check_type(tokens, Float['*B N_in D'])
+
+    if ids_keep is not None:
+      # from pdb import set_trace as st
+      # st()
+      # JAX equivalent of PyTorch's torch.gather for token masking
+      # ids_keep shape: (*B, N_keep) - indices of tokens to keep  
+      # tokens shape: (*B, N_in, D) - all input tokens
+      
+      # Convert ids_keep to integer indices for indexing (input should be float32)
+      # ids_keep_int = ids_keep.astype(jnp.int32)
+      
+      # Use take_along_axis to gather tokens along the sequence dimension
+      # This is equivalent to: torch.gather(tokens, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
+      indices = jnp.expand_dims(ids_keep, axis=-1)  # (*B, N_keep, 1)
+      indices = jnp.broadcast_to(indices, indices.shape[:-1] + (tokens.shape[-1],))  # (*B, N_keep, D)
+      
+      # Gather tokens using the indices
+      tokens = jnp.take_along_axis(tokens, indices, axis=-2)  # (*B, N_keep, D)
 
     # Run global self-attention transformer.
     features = self.processor(tokens)
