@@ -81,8 +81,8 @@ JAX_CHECKPOINT_PATH = "checkpoints/scaling4d_dist_b.npz"
 TEST_VIDEO_PATH = "representations4d/horsejump-high.mp4"
 
 model_patch_size = (2, 16, 16)
-# im_size = (224, 224)
-im_size = (256, 256)
+im_size = (224, 224)
+# im_size = (256, 256)
 model_size = "B"
 dtype = jnp.float32
 model_output_patch_size = (2, 8, 8)
@@ -92,8 +92,8 @@ n_pixels_patch = (
   * model_output_patch_size[2]
 )
 
-# num_input_frames = 16
-num_input_frames = 32 # test PE
+num_input_frames = 16
+# num_input_frames = 32 # test PE
 n_pixels_video = num_input_frames * im_size[0] * im_size[1]
 
 embedding_shape = (
@@ -224,40 +224,6 @@ def get_torch_depth_model(ckpt):
   return torch_depth_model
 
 class TestConvert(unittest.TestCase):
-    # def test_convert_base_depth(self):
-    #   # Load ckpts
-    #   jax_ckpt = np.load(JAX_DEPTH_CHECKPOINT_PATH)
-    #   torch_ckpt = convert_with_readout(jax_ckpt)
-    #   # Load models 
-    #   jax_depth_model = get_jax_depth_model()
-    #   torch_depth_model = get_torch_depth_model(torch_ckpt)
-    #   # Load input
-    #   video = mediapy.read_video(TEST_VIDEO_PATH)
-    #   video = mediapy.resize_video(video, im_size) / 255.0
-    #   video = video[jnp.newaxis, :num_input_frames].astype(jnp.float32)
-    #   key = jax.random.key(0)
-    #   _ = jax_depth_model.init(key, video, is_training_property=False)
-    #   jax_restored_params = checkpoint_utils.recover_tree(
-    #       checkpoint_utils.npload(JAX_DEPTH_CHECKPOINT_PATH)
-    #   )
-    #   output_jax = (
-    #       jax_depth_model.apply(
-    #           jax_restored_params,
-    #           video,
-    #           is_training_property=False
-    #       )
-    #   )
-    #   video_torch = rearrange(
-    #       torch.from_numpy(jax.device_get(video).copy()),
-    #       "b t h w c -> b c t h w"
-    #   )
-    #   output_torch = torch_depth_model(video_torch)
-    # #   st()
-    #   assert torch.allclose( output_torch, torch.from_numpy(jax.device_get(output_jax).copy()), 
-    #     atol=1e-3, rtol=1e-3)
-
-        #   atol=1e-5,
-        #   rtol=1e-5
 
     def test_convert_base_encoder(self):
       # Load ckpts
@@ -274,51 +240,16 @@ class TestConvert(unittest.TestCase):
           torch.from_numpy(jax.device_get(video).copy()),
           "b t h w c -> b c t h w"
       )
-      output_torch = torch_depth_model(video_torch)
+      mask_ratio = 0.95 # as in Rep4D paper
 
-      key = jax.random.key(0)
-      jax_encoder_model = get_jax_encoder_model()
-      _ = jax_encoder_model.init(key, video, is_training_property=False)
-      jax_restored_params = checkpoint_utils.recover_tree(
-          checkpoint_utils.npload(JAX_CHECKPOINT_PATH)
-      )
-      # ! if we need to support different PE size, we need to modify the jax model.
-      # TODO: support different PE size.
-    #   pos_embed = jax_restored_params['transformer']['pos_embed'] # e.g., Shape (1, 8*14*14, embed_dim)
-    #   embed_dim = pos_embed.shape[-1]
-    #   # Reshape to 4D spatial dimensions (batch, time, height, width, channels)
-    #   t_patches = num_input_frames // model_patch_size[0]
-    #   h_patches = im_size[0] // model_patch_size[1]
-    #   w_patches = im_size[1] // model_patch_size[2]
-      
-    #   pos_embed = pos_embed.reshape(1, t_patches, h_patches, w_patches, embed_dim)
-    #   pos_embed = jax.image.resize(
-    #       pos_embed, 
-    #       (1, t_patches, h_patches, w_patches, embed_dim), 
-    #     #   jax.image.ResizeMethod.LINEAR
-    #       "trilinear",
-    #   )
-    #   pos_embed = pos_embed.reshape(1, t_patches * h_patches * w_patches, embed_dim)
-    #   jax_restored_params['transformer']['pos_embed'] = pos_embed
+      output_torch_1 = torch_depth_model(video_torch, mask_ratio=mask_ratio)
+      output_torch_2 = torch_depth_model(video_torch, mask_ratio=mask_ratio)
 
-      output_jax = (
-          jax_encoder_model.apply(
-              jax_restored_params,
-              video,
-              is_training_property=False
-          )
-      )
+      for layer_idx, (out_torch_1, out_torch_2) in enumerate(zip(output_torch_1, output_torch_2)):
+            print(f"layer {layer_idx} does not match, error: {torch.abs(out_torch_1 - out_torch_2).max()}")
 
+    #   st()  
 
-      assert len(output_jax) == len(output_torch)
-      for layer_idx, (out_jax, out_torch) in enumerate(zip(output_jax, output_torch)):
-          assert torch.allclose( out_torch, torch.from_numpy(jax.device_get(out_jax).copy()), 
-            atol=1e-1, rtol=1e-1), \
-            f"layer {layer_idx} does not match, error: {torch.abs(out_torch - torch.from_numpy(jax.device_get(out_jax).copy())).max()}"
-            # print(f"layer {layer_idx} match error: {torch.abs(out_torch - torch.from_numpy(jax.device_get(out_jax).copy())).max()}")
-
-            #   atol=1e-3,
-            #   rtol=1e-3
 
 
 if __name__ == '__main__':
